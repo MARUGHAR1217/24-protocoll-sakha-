@@ -18,8 +18,10 @@ on:
       - 'preload.js'
       - 'prompt-preload.js'
       - 'prompt.html'
-      - 'icon.png'
+      - 'native-plugins-entry.js'
+      - 'native-shim.js'
       - 'NotoSansGujarati-*.ttf'
+      - 'icon.png'
 
 permissions:
   contents: read
@@ -42,34 +44,45 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          if (Test-Path ".\index.html") {
-            $html = ".\index.html"
+          $html = $null
+
+          if (Test-Path -LiteralPath ".\index.html" -PathType Leaf) {
+            $html = (Resolve-Path -LiteralPath ".\index.html").Path
           }
-          elseif (Test-Path ".\Index.html") {
-            $html = ".\Index.html"
+          elseif (Test-Path -LiteralPath ".\Index.html" -PathType Leaf) {
+            $html = (Resolve-Path -LiteralPath ".\Index.html").Path
           }
           else {
             $found = Get-ChildItem -Path . -Recurse -File |
               Where-Object {
                 $_.Name -ieq "index.html" -and
-                $_.FullName -notmatch '\\(\\.git|node_modules|dist|www|android)\\'
+                $_.FullName -notmatch '[\\/](\.git|node_modules|dist|www|android)[\\/]'
               } |
               Select-Object -First 1
 
             if ($null -eq $found) {
+              Write-Host "Files in repository root:"
               Get-ChildItem -Force
-              throw "ERROR: Index.html was not found."
+              throw "ERROR: Index.html or index.html was not found."
             }
 
             $html = $found.FullName
           }
 
-          Write-Host "Using HTML file: $html"
-
-          Copy-Item $html ".\index.html" -Force
+          $sourcePath = [System.IO.Path]::GetFullPath($html)
+          Write-Host "Using HTML file: $sourcePath"
 
           New-Item -ItemType Directory -Force -Path ".\www" | Out-Null
-          Copy-Item $html ".\www\index.html" -Force
+
+          $rootTarget = [System.IO.Path]::GetFullPath(".\index.html")
+          if ($sourcePath -ne $rootTarget) {
+            Copy-Item -LiteralPath $sourcePath -Destination $rootTarget -Force
+          }
+
+          $wwwTarget = [System.IO.Path]::GetFullPath(".\www\index.html")
+          if ($sourcePath -ne $wwwTarget) {
+            Copy-Item -LiteralPath $sourcePath -Destination $wwwTarget -Force
+          }
 
           foreach ($file in @(
             "main.js",
@@ -79,25 +92,41 @@ jobs:
             "native-plugins-entry.js",
             "native-shim.js"
           )) {
-            if (Test-Path ".\$file") {
-              Copy-Item ".\$file" ".\www\$file" -Force
+            $sourceFile = Join-Path (Split-Path $sourcePath -Parent) $file
+
+            if (Test-Path -LiteralPath $sourceFile -PathType Leaf) {
+              Copy-Item -LiteralPath $sourceFile -Destination ".\www\$file" -Force
+            }
+            elseif (Test-Path -LiteralPath ".\$file" -PathType Leaf) {
+              Copy-Item -LiteralPath ".\$file" -Destination ".\www\$file" -Force
             }
           }
 
-          Get-ChildItem -Path . -Filter "NotoSansGujarati-*.ttf" |
+          Get-ChildItem -Path . -Filter "NotoSansGujarati-*.ttf" -File |
             Copy-Item -Destination ".\www" -Force
 
-          if (-not (Test-Path ".\icon.png")) {
-            throw "ERROR: Original icon.png is missing."
+          if (-not (Test-Path -LiteralPath ".\icon.png" -PathType Leaf)) {
+            throw "ERROR: icon.png is missing from the repository root."
           }
 
           New-Item -ItemType Directory -Force -Path ".\build" | Out-Null
-          Copy-Item ".\icon.png" ".\build\icon.png" -Force
+          Copy-Item -LiteralPath ".\icon.png" -Destination ".\build\icon.png" -Force
 
-          Write-Host "Application files prepared."
+          if (-not (Test-Path -LiteralPath ".\www\index.html" -PathType Leaf)) {
+            throw "ERROR: www/index.html was not prepared."
+          }
+
+          Write-Host "Application files prepared successfully."
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          npm install --legacy-peer-deps
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "npm install failed."
+          }
 
       - name: Build Windows EXE
         shell: pwsh
@@ -110,17 +139,21 @@ jobs:
             throw "Windows EXE build failed."
           }
 
-      - name: Find and verify EXE
+      - name: Verify EXE
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          $exe = Get-ChildItem ".\dist" -Filter "*.exe" -File -Recurse |
-            Where-Object { $_.FullName -notmatch '\\win-unpacked\\' } |
+          if (-not (Test-Path ".\dist")) {
+            throw "ERROR: The dist folder was not created."
+          }
+
+          $exe = Get-ChildItem -Path ".\dist" -Filter "*.exe" -File -Recurse |
+            Where-Object { $_.FullName -notmatch '[\\/]win-unpacked[\\/]' } |
             Select-Object -First 1
 
           if ($null -eq $exe) {
-            throw "ERROR: No EXE was generated in the dist folder."
+            throw "ERROR: No distributable EXE was generated."
           }
 
           Write-Host "EXE generated: $($exe.FullName)"
@@ -131,4 +164,3 @@ jobs:
           name: PROTOCOL-SAKHA-exe
           path: dist/**/*.exe
           if-no-files-found: error
-          
