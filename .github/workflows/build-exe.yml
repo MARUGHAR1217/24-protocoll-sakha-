@@ -1,1 +1,134 @@
 
+name: Build PROTOCOL SAKHA EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-exe.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Index.html'
+      - 'index.html'
+      - '**/Index.html'
+      - '**/index.html'
+      - 'main.js'
+      - 'preload.js'
+      - 'prompt-preload.js'
+      - 'prompt.html'
+      - 'icon.png'
+      - 'NotoSansGujarati-*.ttf'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prepare application files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if (Test-Path ".\index.html") {
+            $html = ".\index.html"
+          }
+          elseif (Test-Path ".\Index.html") {
+            $html = ".\Index.html"
+          }
+          else {
+            $found = Get-ChildItem -Path . -Recurse -File |
+              Where-Object {
+                $_.Name -ieq "index.html" -and
+                $_.FullName -notmatch '\\(\\.git|node_modules|dist|www|android)\\'
+              } |
+              Select-Object -First 1
+
+            if ($null -eq $found) {
+              Get-ChildItem -Force
+              throw "ERROR: Index.html was not found."
+            }
+
+            $html = $found.FullName
+          }
+
+          Write-Host "Using HTML file: $html"
+
+          Copy-Item $html ".\index.html" -Force
+
+          New-Item -ItemType Directory -Force -Path ".\www" | Out-Null
+          Copy-Item $html ".\www\index.html" -Force
+
+          foreach ($file in @(
+            "main.js",
+            "preload.js",
+            "prompt-preload.js",
+            "prompt.html",
+            "native-plugins-entry.js",
+            "native-shim.js"
+          )) {
+            if (Test-Path ".\$file") {
+              Copy-Item ".\$file" ".\www\$file" -Force
+            }
+          }
+
+          Get-ChildItem -Path . -Filter "NotoSansGujarati-*.ttf" |
+            Copy-Item -Destination ".\www" -Force
+
+          if (-not (Test-Path ".\icon.png")) {
+            throw "ERROR: Original icon.png is missing."
+          }
+
+          New-Item -ItemType Directory -Force -Path ".\build" | Out-Null
+          Copy-Item ".\icon.png" ".\build\icon.png" -Force
+
+          Write-Host "Application files prepared."
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Windows EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          npx --yes electron-builder --win --x64
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows EXE build failed."
+          }
+
+      - name: Find and verify EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $exe = Get-ChildItem ".\dist" -Filter "*.exe" -File -Recurse |
+            Where-Object { $_.FullName -notmatch '\\win-unpacked\\' } |
+            Select-Object -First 1
+
+          if ($null -eq $exe) {
+            throw "ERROR: No EXE was generated in the dist folder."
+          }
+
+          Write-Host "EXE generated: $($exe.FullName)"
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PROTOCOL-SAKHA-exe
+          path: dist/**/*.exe
+          if-no-files-found: error
+          
