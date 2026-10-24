@@ -1,8 +1,17 @@
-
 name: Build PROTOCOL SAKHA APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-apk.yml'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - 'index.html'
+      - 'NotoSansGujarati-*.ttf'
+      - 'icon*.png'
 
 permissions:
   contents: read
@@ -14,28 +23,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check required files
-        run: |
-          test -f package.json || (echo 'package.json missing' && exit 1)
-          test -f index.html || (echo 'index.html missing' && exit 1)
-          cat package.json
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
-      - name: Build Android APK
+      - name: Install project dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Ensure Capacitor packages are installed
+        run: npm install --no-save --legacy-peer-deps @capacitor/cli @capacitor/core @capacitor/android
+
+      - name: Prepare web assets
         run: |
-          npx cap sync android
+          mkdir -p www
+          cp index.html www/index.html
+          for f in NotoSansGujarati-*.ttf icon.png icon-only.png icon-foreground.png icon-background.png; do
+            if [ -f "$f" ]; then cp "$f" www/; fi
+          done
+          test -f www/index.html
+          cat capacitor.config.json
+
+      - name: Add Android platform if missing
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build debug APK
+        run: |
+          chmod +x android/gradlew
           cd android
-          chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: PROTOCOL-SAKHA-apk
