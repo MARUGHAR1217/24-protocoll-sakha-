@@ -1,4 +1,3 @@
-
 name: Build PROTOCOL SAKHA APK
 
 on:
@@ -6,16 +5,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - '.github/workflows/build-apk.yml'
-      - 'package.json'
-      - 'capacitor.config.json'
-      - 'index.html'
-      - 'main.js'
-      - 'native-plugins-entry.js'
-      - 'native-shim.js'
-      - 'NotoSansGujarati-*.ttf'
-      - 'icon*.png'
 
 permissions:
   contents: read
@@ -39,58 +28,69 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Install project dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Ensure Capacitor packages are installed
-        run: npm install --no-save --legacy-peer-deps @capacitor/cli @capacitor/core @capacitor/android
+      - name: Install dependencies
+        run: |
+          npm install --legacy-peer-deps
+          npm install --no-save --legacy-peer-deps @capacitor/cli @capacitor/core @capacitor/android
 
       - name: Prepare web assets
         run: |
           mkdir -p www
           cp index.html www/index.html
-
-          for f in main.js native-plugins-entry.js native-shim.js NotoSansGujarati-*.ttf icon.png icon-only.png icon-foreground.png icon-background.png; do
-            if [ -f "$f" ]; then
-              cp "$f" www/
-            fi
+          for f in main.js native-plugins-entry.js native-shim.js NotoSansGujarati-*.ttf; do
+            if [ -f "$f" ]; then cp "$f" www/; fi
           done
 
-          test -f www/index.html
-          echo "Web assets prepared."
-
-      - name: Add Android platform if missing
+      - name: Create Android project if missing
         run: |
           if [ ! -d android ]; then
             npx cap add android
           fi
 
+      - name: Generate Android launcher icons from original icon.png
+        run: |
+          test -f icon.png
+          python3 -m pip install --quiet Pillow
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+
+          source = Image.open("icon.png").convert("RGBA")
+          sizes = {
+              "mdpi": 48,
+              "hdpi": 72,
+              "xhdpi": 96,
+              "xxhdpi": 144,
+              "xxxhdpi": 192,
+          }
+
+          res = Path("android/app/src/main/res")
+          for density, size in sizes.items():
+              folder = res / f"mipmap-{density}"
+              folder.mkdir(parents=True, exist_ok=True)
+              icon = source.resize((size, size), Image.Resampling.LANCZOS)
+              icon.save(folder / "ic_launcher.png")
+              icon.save(folder / "ic_launcher_round.png")
+
+          # Use the same original artwork for adaptive launcher icons.
+          for name in ("ic_launcher_foreground.png", "ic_launcher.png"):
+              folder = res / "drawable"
+              folder.mkdir(parents=True, exist_ok=True)
+              source.save(folder / name)
+
+          print("Original icon.png applied to Android launcher resources.")
+          PY
+
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Prepare Kotlin version fix
-        run: |
-          cat > /tmp/force-kotlin.gradle <<'EOF'
-          allprojects {
-            configurations.configureEach {
-              resolutionStrategy.eachDependency { details ->
-                if (details.requested.group == 'org.jetbrains.kotlin' &&
-                    details.requested.name in ['kotlin-stdlib', 'kotlin-stdlib-jdk7', 'kotlin-stdlib-jdk8']) {
-                  details.useVersion '1.8.22'
-                  details.because 'Align Kotlin standard library versions'
-                }
-              }
-            }
-          }
-          EOF
-
-      - name: Build debug APK
+      - name: Build APK
         run: |
           chmod +x android/gradlew
           cd android
-          ./gradlew --init-script /tmp/force-kotlin.gradle assembleDebug
+          ./gradlew assembleDebug
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PROTOCOL-SAKHA-apk
