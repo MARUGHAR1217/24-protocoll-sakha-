@@ -1,1 +1,43 @@
 
+name: Build PROTOCOL SAKHA APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required files
+        run: |
+          test -f package.json || (echo 'package.json missing' && exit 1)
+          test -f index.html || (echo 'index.html missing' && exit 1)
+          cat package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Android APK
+        run: |
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PROTOCOL-SAKHA-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
