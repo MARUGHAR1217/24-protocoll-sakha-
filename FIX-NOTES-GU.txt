@@ -1,0 +1,114 @@
+PROTOCOL SAKHA — APK / PDF / SAVE-SHARE WORK NOTES
+
+Applied source/workflow changes:
+1. APK workflow bundles html2canvas and jsPDF locally; PDF generation no longer relies solely on an internet CDN.
+2. APK workflow bundles official Capacitor Filesystem, Share, and App JavaScript plugin proxies.
+3. Capacitor bridge and plugin scripts are loaded before the app's later scripts.
+4. Gujarati font files are copied into the Android web assets and the APK's font paths are adjusted, so the font does not depend on files outside Capacitor's webDir.
+5. Native PDF export writes to Documents/PROTOCOL-SAKHA/Exports and then opens Android's share sheet.
+6. Native blob-download links use Capacitor Filesystem/Share; backup-like downloads are written to Documents/PROTOCOL-SAKHA/Backups before sharing.
+7. The original www/index.html layout and content have been preserved except for export plumbing and the workflow-specific font path adjustment.
+
+Static validation completed:
+- APK and EXE workflow YAML parsed successfully.
+- Inline JavaScript syntax checks passed.
+- native-shim.js and native-plugins-entry.js syntax checks passed.
+
+Not yet verified:
+- A real APK build from GitHub Actions.
+- PDF output, Android file saving/sharing, Station Demand and Rotation exports on a physical phone.
+- Data migration/restore across reinstall or between devices.
+
+Important:
+- Do not uninstall the currently working app or clear its storage before taking and checking a backup.
+- The ZIP contains the existing signing keystore so the workflow can sign with the same key. Do NOT commit this keystore or its password to a public GitHub repository. Use a private repository and protect the signing key; for a public repository, move signing to GitHub Actions secrets before uploading the source.
+
+Additional rotation / route-point fixes (2026-10-16):
+8. Employee identity keys now normalize Gujarati/English digits and phone/buckle formatting so the same staff member is not selected twice under different key formats.
+9. Automatic board rotation deduplicates employee identities and applies normalized identities to existing duty logs and already-used allocations.
+10. Point-duty allocation uses stable employee identities (not JavaScript object references) when excluding staff already assigned to another point.
+11. Route-point allocation now displays points grouped by jurisdiction, with the selected station/sector first and return points in a separate section.
+12. Each outbound point has an editable named return-point field (for example, “હરિમંદિર” for the return point). The return-point map is saved locally and the return points appear as separate named allocation rows.
+13. Existing point jurisdiction metadata is used to label and group route points, and selected return-route points are paired in order; extra return-route points remain visible after the paired points.
+
+Validation after these changes:
+- All inline JavaScript blocks in www/index.html passed Node.js syntax checks.
+- main.js, preload.js, www/native-shim.js, and native-plugins-entry.js passed Node.js syntax checks.
+- Functional testing on the user's actual phone and a new APK build are still required; do not treat these as physically device-verified until installed and tested.
+
+
+14. Rotation-button fix (2026-10-16): pressing the 🔄 button now retains previous rotation history for that same allocation card instead of deleting that card’s prior log entries before each rotation. The current names are avoided for the next round, and the full recent-duty history is used to select the next available employees. This is intended to prevent a 12-PC (or multi-employee) pool from alternating only between two names.
+Validation: JavaScript syntax validation is required after this change; real-device testing is still required to confirm the rotation through all eligible staff.
+
+15. Requirement update (2026-10-16): Event Plannerમાં Movement Group field ઉમેર્યું. સમાન તારીખ/VIP/movement group ધરાવતા Going eventની allocations Return eventમાં rank-order પ્રમાણે reuse કરવાનો પ્રયત્ન થાય છે; staff unavailable, leave, rank mismatch અથવા time conflict હોય તો fallback selection થાય છે અને pairing ન મળતી હોય તો સૂચના દેખાય છે.
+16. Event Plannerમાં saved route point ઉપરાંત manual point typing ઉમેર્યું; checkbox પસંદ હોય ત્યારે custom point route masterમાં permanent save થાય છે. Point jurisdiction route data મુજબ લેવાનો પ્રયાસ થાય છે.
+17. Event edit માટે existing event ID રાખવામાં આવે છે; locked event edit અટકે છે; date/time/direction/point list બદલાય તો જૂની allocations clear થાય છે જેથી ફરી allocate કરવી પડે.
+18. Manual substitute સમયે reason ફરજિયાત પૂછાય છે અને version/audit logમાં નોંધાય છે.
+19. Added MASTER-CHECKLIST-GUJARATI.md and AUDIT-STATUS-GUJARATI.md. Inline JavaScript syntax check passed. Real Android/Windows runtime, PDF/print, and live route allocation tests remain pending.
+
+
+20. Follow-up review fixes (2026-10-16):
+- Added a new permanent route workflow from Event Planner: route name, start, end, and point entries can be saved for reuse. Existing saved route points can be selected; typed points can be saved to the selected route.
+- Added a per-point jurisdiction selector separate from the route-owner police station, so multi-jurisdiction routes can be represented without forcing every point to the route owner.
+- Auto allocation now checks leave/unavailability records through a shared eligibility helper before assigning personnel.
+- Gujarati font CSS now resolves from www/assets in the desktop package as well as the Android webDir.
+- Removed hard-coded Android signing credentials from patch_gradle.py; APK workflow requires PDR_KEYSTORE_BASE64, PDR_KEYSTORE_PASSWORD, PDR_KEY_ALIAS, and PDR_KEY_PASSWORD GitHub Actions secrets. Do not commit the keystore or passwords to a public repository.
+Validation: 19 inline JavaScript blocks plus main/preload/native-shim scripts passed Node syntax checks; workflow YAML and package/config JSON parsed successfully. Chromium runtime navigation was blocked by this environment, so UI behavior, APK/EXE build, and physical-device tests remain unverified.
+
+21. Police-station allocation freeze / only-first-station fix (2026-10-16):
+- Removed the assignment-time mutation that overwrote an employee's permanent `station` field with the station where a point duty was being assigned. That mutation could make the employee disappear from their actual home-station roster after the first allocation and block later stations.
+- Replaced repeated full-history scans for every point with a single indexed scan of saved point-duty history, reducing repeated localStorage parsing that could freeze the UI as history grows. The index refreshes when a point-duty store is saved.
+- Existing master employee station values that were already overwritten by an earlier version cannot be reliably reconstructed from the allocation records alone. Check/restore those employee station fields from a verified backup if they no longer reflect their actual home station.
+Validation: all 19 inline JavaScript blocks passed Node.js syntax checks after the change. Runtime multi-station allocation and long-history performance still require testing in the app / on the user's device; do not claim physical-device verification.
+
+2026-10-16 — POLICE STATION ALLOCATION / NAMES FIX
+- Corrected station eligibility: employees with station '-' or an empty station are treated as the shared/unassigned pool; staff explicitly assigned to a different station remain excluded.
+- Fixed the rotation helper call to pass employee identity keys, not employee objects, preventing the same person from being assigned twice across stations/points.
+- Added PI to point-wise demand and allocation alongside PSI, ASI, HC and PC; improved Gujarati rank matching.
+- Station-wise list and daily schedule now read the multi-person V4 allocation records, rather than showing only the first/legacy name for a point.
+- Assignment-to-employee lookup now prefers stable employee keys to avoid incorrect names when employee-list indexes shift.
+- Automated synthetic regression test passed: Station B and Station C both allocated requested rank mixes, central-pool staff were used, explicit Station A staff were not borrowed, and no employee was duplicated across those assignments.
+- Inline JavaScript syntax check passed (19 inline script blocks). Actual Android APK / Windows EXE and live device UI still require build/device regression testing.
+
+
+23. Station Demand / Auto-Rotation Board follow-up correction (2026-10-16):
+- Added PI as a first-class rank in the Station Demand / Auto-Rotation Board, including availability counts, point demand entry, card totals, and assignment rendering.
+- Fixed point-wise demand serialization so PI counts are not dropped when pressing OK; PI requirements now survive into the saved board card and point plan.
+- Station eligibility is now applied to the selected station: available employees explicitly assigned to another station are not borrowed; blank / '-' station entries remain shared-pool staff. Station-name matching normalizes Gujarati digits and common “પોલીસ સ્ટેશન” wording.
+- Rotation and manual replacement candidate lists use the same station-aware eligibility filter.
+- Regression checks passed for two different station pools, shared-pool personnel, PI rank matching, ZIP integrity, and JavaScript syntax. Actual Android/Windows UI behavior and APK/EXE builds remain unverified in this environment.
+
+24. Correction to Station Demand / Auto-Rotation Board follow-up (2026-10-16):
+- The board keeps its original rank groups: PSI, ASI, HC and PC. PI was not part of the requested change.
+- Root cause found in the previous follow-up ZIP: PI had been added to the board rank list, but point-plan rendering still initialized only PSI/ASI/HC/PC arrays. This mismatch could throw a JavaScript error while rendering the board after allocation, preventing names from appearing. PI additions were reverted to restore consistent rendering.
+- Station eligibility remains applied to the selected station: available employees explicitly assigned to another station are not borrowed; blank / '-' station entries remain shared-pool staff. Rotation and manual replacement use the same eligibility filter.
+- Actual Android/Windows UI behavior remains unverified. Confirm OK name display and full 🔄 rotation on-device before calling this fully fixed.
+
+
+--- 2026-10-17: નામ ઓટોમેટિક ન આવવાનો સુધારો (સ્ટેશન માંગણી બોર્ડ) ---
+1) હોદ્દો ઓળખવાનું સુધાર્યું: પો.સ.ઈ./પો.સ.ઇ., એ.એસ.આઈ./એ.એસ.આઇ., ટપકાં-ખાલી જગ્યા વગેરેના ફરક હોય તો પણ PSI/ASI/HC/PC ઓળખાય છે. અગાઉ "ઇ" (નાની) લખેલ હોદ્દો ઓળખાતો ન હતો અને નામ ખાલી રહેતા.
+2) સ્ટાફ ઓછો પડે ત્યારે હવે કારણ પણ દેખાય છે (કુલ કેટલા, ઉપલબ્ધ કેટલા, રજા, બીજે ફાળવાયેલ, બીજા સ્ટેશનના).
+બીજું કંઈ બદલ્યું નથી.
+
+--- 2026-10-17 (2): બોર્ડની નીચે લાંબી "નામ → નામ (ઓટો રોટેશન)" યાદી ન બતાવવી ---
+🔄 બટનથી થતા ઓટો રોટેશનની યાદી હવે બોર્ડ પર દેખાતી નથી (ડેટા સચવાયેલો છે). નામ બદલવાની (ટેપ કરીને, કારણ સાથે) નોંધ પહેલાની જેમ દેખાશે.
+
+--- 2026-10-17 (3): પોઈન્ટ પર માણસો જાતે વહેંચાઈ જવાનું બંધ ---
+પોઈન્ટવાર સંખ્યા ન લખી હોય તો એપ હવે નામ સરખા ભાગે પોઈન્ટ પર મૂકતી નથી (અગાઉ 1 જોઈએ ત્યાં 3 મૂકાતા). નામ સ્ટેશન પર દેખાશે અને ✏️ દબાવી પોઈન્ટવાર સંખ્યા લખવાની સૂચના આવશે. પોઈન્ટવાર સંખ્યા લખો ત્યારે બરાબર એટલા જ માણસ તે પોઈન્ટ પર મૂકાય છે.
+
+--- 2026-10-17 (4): પોઈન્ટવાર માંગણી ટેબલ ખુલતું ન હતું (મુખ્ય ખામી) ---
+કારણ: બોર્ડના કોડમાં `retOptions` function ખૂટતું હતું, એટલે સ્ટેશન પસંદ કરતાં error આવતો અને "દરેક પોઈન્ટ પર કેટલા માણસ — કયા હોદ્દાના" ટેબલ દેખાતું ન હતું. ફંક્શન ઉમેર્યું છે; હવે સ્ટેશન પસંદ કરતાં જ જવાના રૂટના બધા પોઈન્ટ અને PSI/ASI/HC/PC ના ખાના દેખાશે, અને પરતનો રૂટ પસંદ કરવાની યાદી પણ.
+
+--- 2026-10-17 (5): સાદી ગોઠવણ — રૂટ/પોઈન્ટ વાળો ભાગ અંદર (બંધ) રાખ્યો ---
+૧) સ્ટેશન પસંદ કરતાં રૂટ/પોઈન્ટ/પરત રૂટ/પોઈન્ટવાર ટેબલ હવે સીધા દેખાતા નથી. ઉપર ફક્ત: સ્ટેશન પસંદ કરો → PSI/ASI/HC/PC સંખ્યા લખો → OK.
+૨) "📍 રૂટ / પોઈન્ટ મુજબ ફાળવણી (જરૂર પડે ત્યારે ખોલો)" બટન સંખ્યા નીચે છે. ખોલો ત્યારે જ રૂટ, પરતનો રૂટ અને દરેક પોઈન્ટની સંખ્યા દેખાય અને વપરાય. બંધ હોય ત્યારે તેની કોઈ અસર નથી.
+૩) પોઈન્ટવાર કાર્ડ પર ✏️ દબાવો તો આ ભાગ આપમેળે ખૂલે છે.
+૪) સંખ્યાના ખાનામાં ટેપ કરતાં જૂની સંખ્યા પસંદ થઈ જાય છે (સીધું નવી લખી શકાય).
+૫) "પોઈન્ટ પર કેટલા માણસ નક્કી નથી" વાળી સૂચના કાઢી નાખી.
+
+--- 2026-10-17 (6): રોટેશન — એકના એક લોકો એ જ સ્ટેશન પર ન આવે ---
+પહેલાં: બધામાં જેને સૌથી લાંબા સમયથી ડ્યુટી નથી મળી તેને પહેલા લેવાતા, એટલે પહેલા સ્ટેશનમાં દર વખતે લગભગ અડધા લોકો એ જ આવતા.
+હવે: જે લોકો છેલ્લી વખતે એ જ સ્ટેશન પર હતા તેમને યાદીમાં છેલ્લે મૂકાય છે; બાકીનામાંથી જેને સૌથી લાંબા સમયથી ડ્યુટી નથી મળી તેને પહેલા લેવાય છે. સ્ટાફ ઓછો હોય (દા.ત. ફક્ત 3 ASI) ત્યારે જ એ જ લોકો ફરી આવે.
+
+--- 2026-10-17 (7): બકલ નંબર સુધારો ---
+શ્રી વિપુલકુમાર એ.પરમાર નો બકલ નંબર ૮૯૨ ને બદલે ૨૪ કર્યો (ડિફોલ્ટ યાદીમાં અને ફોનમાં અગાઉ સેવ થયેલી યાદીમાં પણ). હવે કોઈ બકલ નંબર બે વાર આવતો નથી.

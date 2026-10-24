@@ -1,0 +1,54 @@
+name: Build PROTOCOL SAKHA APK
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: Prepare Capacitor project
+        env:
+          PDR_KEYSTORE_PASSWORD: ${{ secrets.PDR_KEYSTORE_PASSWORD }}
+          PDR_KEY_ALIAS: ${{ secrets.PDR_KEY_ALIAS }}
+          PDR_KEY_PASSWORD: ${{ secrets.PDR_KEY_PASSWORD }}
+        run: |
+          mkdir cap
+          cp -r www assets cap/
+          mkdir -p cap/www/assets
+          cp assets/NotoSansGujarati-Regular.ttf assets/NotoSansGujarati-Bold.ttf cap/www/assets/
+          sed -i 's#../assets/NotoSansGujarati-#assets/NotoSansGujarati-#g' cap/www/index.html
+          cp native-shim.js cap/www/native-shim.js
+          cp native-plugins-entry.js cap/
+          cp capacitor.config.json patch_gradle.py cap/
+          cd cap
+          if [ -z "${{ secrets.PDR_KEYSTORE_BASE64 }}" ]; then echo "Missing PDR_KEYSTORE_BASE64 GitHub Actions secret"; exit 1; fi
+          echo "${{ secrets.PDR_KEYSTORE_BASE64 }}" | base64 --decode > protocol-sakha.keystore
+          mkdir -p www/lib
+          grep -q 'lib/native-plugins.js' www/index.html || sed -i 's#</head>#<script src="capacitor.js"></script><script src="lib/native-plugins.js"></script><script src="native-shim.js"></script></head>#' www/index.html
+          npm init -y
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/filesystem@6 @capacitor/share@6 @capacitor/app@6
+          npm i html2canvas@1.4.1 jspdf@2.5.1 esbuild
+          npx esbuild native-plugins-entry.js --bundle --platform=browser --format=iife --outfile=www/lib/native-plugins.js
+          cp node_modules/html2canvas/dist/html2canvas.min.js www/lib/html2canvas.min.js
+          cp node_modules/jspdf/dist/jspdf.umd.min.js www/lib/jspdf.umd.min.js
+          npm i -D @capacitor/assets@3
+          npx cap add android
+          npx capacitor-assets generate --android
+          python3 patch_gradle.py
+          npx cap sync android
+      - name: Build release APK
+        run: |
+          cd cap/android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+        env:
+          PDR_KEYSTORE_PASSWORD: ${{ secrets.PDR_KEYSTORE_PASSWORD }}
+          PDR_KEY_ALIAS: ${{ secrets.PDR_KEY_ALIAS }}
+          PDR_KEY_PASSWORD: ${{ secrets.PDR_KEY_PASSWORD }}
+      - name: Rename APK
+        run: cp cap/android/app/build/outputs/apk/release/app-release.apk PROTOCOL-SAKHA.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: PROTOCOL-SAKHA-apk, path: PROTOCOL-SAKHA.apk }
