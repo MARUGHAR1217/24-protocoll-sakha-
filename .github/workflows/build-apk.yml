@@ -1,3 +1,4 @@
+
 name: Build PROTOCOL SAKHA APK
 
 on:
@@ -11,6 +12,7 @@ on:
       - 'package-lock.json'
       - 'capacitor.config.json'
       - 'index.html'
+      - '**/index.html'
       - 'main.js'
       - 'native-plugins-entry.js'
       - 'native-shim.js'
@@ -51,17 +53,43 @@ jobs:
             @capacitor/cli @capacitor/core @capacitor/android
 
       - name: Prepare web assets
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p www
-          cp index.html www/index.html
+
+          if [ -f "./index.html" ]; then
+            HTML_FILE="./index.html"
+          else
+            HTML_FILE="$(find . \
+              -type d \( -name .git -o -name node_modules -o -name www -o -name android \) -prune -o \
+              -type f -name 'index.html' -print -quit)"
+          fi
+
+          if [ -z "${HTML_FILE:-}" ] || [ ! -f "$HTML_FILE" ]; then
+            echo "ERROR: Could not find index.html in the repository."
+            echo "Files at repository root:"
+            ls -la
+            echo "HTML files found:"
+            find . \
+              -type d \( -name .git -o -name node_modules -o -name www -o -name android \) -prune -o \
+              -type f \( -iname '*.html' -o -iname '*.htm' \) -print
+            exit 1
+          fi
+
+          HTML_DIR="$(dirname "$HTML_FILE")"
+          echo "Using HTML file: $HTML_FILE"
+          cp "$HTML_FILE" www/index.html
 
           for f in main.js native-plugins-entry.js native-shim.js NotoSansGujarati-*.ttf; do
-            if [ -f "$f" ]; then
+            if [ -f "$HTML_DIR/$f" ]; then
+              cp "$HTML_DIR/$f" www/
+            elif [ -f "$f" ]; then
               cp "$f" www/
             fi
           done
 
-          test -f www/index.html
+          test -s www/index.html
           test -f icon.png
 
           echo "Web assets prepared."
@@ -116,8 +144,6 @@ jobs:
               icon.save(folder / "ic_launcher.png")
               icon.save(folder / "ic_launcher_round.png")
 
-          # Remove adaptive-icon XML so Android uses the original
-          # raster icon files generated from icon.png.
           adaptive = res / "mipmap-anydpi-v26"
 
           if adaptive.exists():
