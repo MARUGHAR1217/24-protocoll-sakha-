@@ -1,3 +1,4 @@
+
 name: Build PROTOCOL SAKHA APK
 
 on:
@@ -10,6 +11,9 @@ on:
       - 'package.json'
       - 'capacitor.config.json'
       - 'index.html'
+      - 'main.js'
+      - 'native-plugins-entry.js'
+      - 'native-shim.js'
       - 'NotoSansGujarati-*.ttf'
       - 'icon*.png'
 
@@ -19,6 +23,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,6 +32,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -44,11 +50,15 @@ jobs:
         run: |
           mkdir -p www
           cp index.html www/index.html
-          for f in NotoSansGujarati-*.ttf icon.png icon-only.png icon-foreground.png icon-background.png; do
-            if [ -f "$f" ]; then cp "$f" www/; fi
+
+          for f in main.js native-plugins-entry.js native-shim.js NotoSansGujarati-*.ttf icon.png icon-only.png icon-foreground.png icon-background.png; do
+            if [ -f "$f" ]; then
+              cp "$f" www/
+            fi
           done
+
           test -f www/index.html
-          cat capacitor.config.json
+          echo "Web assets prepared."
 
       - name: Add Android platform if missing
         run: |
@@ -59,11 +69,27 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Align Kotlin standard library versions
+        run: |
+          cat > /tmp/force-kotlin.gradle <<'EOF'
+          allprojects {
+            configurations.configureEach {
+              resolutionStrategy.eachDependency { details ->
+                if (details.requested.group == 'org.jetbrains.kotlin' &&
+                    details.requested.name in ['kotlin-stdlib', 'kotlin-stdlib-jdk7', 'kotlin-stdlib-jdk8']) {
+                  details.useVersion '1.8.22'
+                  details.because 'Align Kotlin standard library versions'
+                }
+              }
+            }
+          }
+          EOF
+
       - name: Build debug APK
         run: |
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug
+          ./gradlew --init-script /tmp/force-kotlin.gradle assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
