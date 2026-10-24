@@ -59,7 +59,14 @@ jobs:
           mkdir -p www
 
           if [ -f "./index.html" ]; then
-            HTML_FILE="./index.html"
+  HTML_FILE="./index.html"
+elif [ -f "./Index.html" ]; then
+  HTML_FILE="./Index.html"
+else
+  HTML_FILE="$(find . \
+    -type d \( -name .git -o -name node_modules -o -name www -o -name android \) -prune -o \
+    -type f -iname 'index.html' -print -quit)"
+fi
           else
             HTML_FILE="$(find . \
               -type d \( -name .git -o -name node_modules -o -name www -o -name android \) -prune -o \
